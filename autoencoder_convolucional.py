@@ -1,15 +1,45 @@
 # -*- coding: utf-8 -*-
-from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, LeakyReLU, Flatten, Lambda, Dense, Activation, Dropout, Reshape, Input
+import tensorflow as tf
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, BatchNormalization, LeakyReLU, Flatten, Lambda, Dense, Activation, Dropout, Reshape, Input, Layer
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler, CSVLogger, EarlyStopping
 from tensorflow.keras.utils import plot_model
+from tensorflow.keras import regularizers
 from utils import learning_curve_plot
 from tensorflow.keras import backend as K
 import numpy as np
 import os
 import pickle
 
+#Definimos una clase que cree una capa de atencion Luong
+class AttentionLayer(Layer):
+    def __init__(self, **kwargs):
+        super(AttentionLayer, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        assert isinstance(input_shape, list)
+        #Se espera que la entrada sea una lista de dos tensores
+        self.W = self.add_weight(name='W', shape=(input_shape[0][-1], input_shape[0][-1]), initializer='normal', trainable=True)
+        self.V = self.add_weight(name='V', shape=(input_shape[0][-1], 1), initializer='normal', trainable=True)
+        super(AttentionLayer, self).build(input_shape)
+
+    def call(self, x):
+        #x[0] es el tensor de entrada, x[1] es el tensor de estado oculto
+        #Se calcula el puntaje de atencion
+        score = K.tanh(K.dot(x[0], self.W) + K.dot(x[1], self.W))
+        #Se calcula la distribucion de atencion
+        attention_weights = K.softmax(K.dot(score, self.V), axis=1)
+        #Se calcula el contexto
+        context = K.sum(x[0] * attention_weights, axis=1)
+        return context, attention_weights
+
+    def compute_output_shape(self, input_shape):
+        return input_shape[0][0], input_shape[0][-1]
+
+    def get_config(self):
+        base_config = super(AttentionLayer, self).get_config()
+        return base_config
 
 class ConvAutoencoder:
 
@@ -22,6 +52,7 @@ class ConvAutoencoder:
                decoder_conv_kernels,
                decoder_conv_strides,
                z_dim):
+        super(ConvAutoencoder, self).__init__()
         self.input_dim = input_dim
         self.encoder_conv_filters = encoder_conv_filters
         self.encoder_conv_kernels = encoder_conv_kernels
@@ -33,6 +64,7 @@ class ConvAutoencoder:
 
     def build(self, use_batch_norm=False, use_dropout=False, VCAE=False):
         #Defiminos el encoder
+
         encoder_input = Input(shape=self.input_dim, name='encoder_input')
         x = encoder_input
         for i in range (len(self.encoder_conv_filters)):
@@ -53,6 +85,7 @@ class ConvAutoencoder:
         shape_before_flattening = K.int_shape(x)[1:]
         x = Flatten()(x)
         encoder_output = Dense(self.z_dim, name='encoder_output')(x)
+       
 
       #La versión variacional pretende regularizar el espacio latente. a partir de distribuciones de probabilidad multivariante
         if VCAE:
@@ -66,8 +99,8 @@ class ConvAutoencoder:
                 epsilon = K.random_normal(shape = K.shape(mu), mean = 0., stddev=1.)
                 return mu + K.exp(log_var/2)*epsilon
             encoder_output = Lambda(sampling, name='encoder_output')([self.mu, self.log_var]) 
-
-
+        #atencion = AttentionLayer(name='attention_layer')([encoder_input, encoder_output])
+        #self.encoder = Model(encoder_input, atencion)
         self.encoder = Model(encoder_input, encoder_output)
         #Definimos el decoder
         decoder_input = Input(shape=(self.z_dim,), name='decoder_input')
@@ -79,7 +112,7 @@ class ConvAutoencoder:
             conv_layer_t = Conv2DTranspose(filters=self.decoder_conv_filters[i], 
                                      kernel_size=self.decoder_conv_kernels[i],
                                      strides=self.decoder_conv_strides[i],
-                                     padding='same', name='decoder_conv'+str(i))
+                                     padding='same', kernel_regularizer = regularizers.l1(0.00001), name='decoder_conv'+str(i))
         
             x = conv_layer_t(x)
 
@@ -98,26 +131,31 @@ class ConvAutoencoder:
         autoencoder_output = self.decoder(encoder_output)
         autoencoder = Model(autoencoder_input, autoencoder_output)
         self.model = autoencoder
+        
 
     def compile(self, learning_rate=0.005, r_loss_factor=0.4, VCAE=False):
         self.learning_rate = learning_rate
         self.r_loss_factor = r_loss_factor
-        optimizer = Adam(lr = learning_rate)
+        optimizer = Adam(learning_rate = self.learning_rate)
         #Definimos las pérdidas en caso del variacional y para ello tenemos que determinar una pérdida asociada al mse y otra al espacio latente
         #Debido a esto ponderamos la pérdida asociado al espacio latente como un hiperparámetro mas
         if VCAE:
+            
             def vae_r_loss(y_true, y_pred):
                 r_loss = K.mean(K.square(y_true-y_pred), axis=[1,2,3])
                 return r_loss * self.r_loss_factor
             def vae_kl_loss(y_true, y_pred):
-                kl_loss = -0.5 * K.sum(1 + self.log_var - K.square(self.mu) - K.exp(self.log_var, axis = 1))
+                kl_loss = -0.5 * K.sum(1 + self.log_var - K.square(self.mu) - K.exp(self.log_var), axis = 1)
                 return kl_loss
             def vae_loss(y_true, y_pred):
                 r_loss = vae_r_loss(y_true, y_pred)
                 kl_loss = vae_kl_loss(y_true, y_pred)
-                return r_loss + kl_loss
+                return K.mean(r_loss + kl_loss)
+            self.model.compile(optimizer=optimizer, loss=vae_loss)
         else:
             self.model.compile(optimizer=optimizer, loss='mse')
+        return self.model
+
 
     def train(self, data_flow, epochs, steps_per_epoch, data_flow_val, run_folders):
         csv_logger = CSVLogger(run_folders["log_filename"])

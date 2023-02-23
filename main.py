@@ -23,7 +23,7 @@ z_dim = 400
 lr = 0.0005
 batch_size = 10 
 epochs = 50
-r_loss_factor = 0.4
+r_loss_factor = 0.65
 is_training = True
 
 base_folder = "/app/Otros/AC/"
@@ -47,7 +47,7 @@ hyperparameters = {"input_dim": input_dim,
                    "z_dim":z_dim, 
                    "lr":lr, 
                    "batch_size":batch_size, 
-                   "epochs":epochs, 
+    "epochs":epochs, 
                    "r_loss_factor":r_loss_factor, 
                    "opt":"Adam", 
                    "loss_function":"mse",
@@ -88,12 +88,12 @@ if is_training:
                                z_dim)
       
       # Construyendo arquitectura
-    my_CAE.build(use_batch_norm=True, use_dropout=False, VCAE=False)
+    my_CAE.build(use_batch_norm=True, use_dropout=False, VCAE=True)
     print(my_CAE.model.summary())
 
       # Compilando el CAE
-    my_CAE.compile(learning_rate=lr, r_loss_factor=r_loss_factor)
-
-      # Entrenando el CAE
+    vae_loss = my_CAE.compile(learning_rate=lr, r_loss_factor=r_loss_factor, VCAE=True)
+    
+    
     steps_per_epoch = len(data_flow_train)
     H = my_CAE.train(data_flow_train, epochs, steps_per_epoch, data_flow_val, run_folders)
