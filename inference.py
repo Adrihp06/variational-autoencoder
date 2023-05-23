@@ -16,14 +16,13 @@ batch_size = 8
 input_dim = (128, 128, 1)
 
 
-base_folder = "/app/Otros/AC/"
+base_folder = "PATH_TO_PROJECT"
 run_folders = {"tsv_path": base_folder + "data/partition.csv", 
            "data_path": base_folder + "data/images/", 
            "model_path": base_folder + "data/Models/", 
            "results_path": base_folder + "data/Results/", 
            "log_filename": base_folder + "data/Results/log/CAE.log",
-           "exp_name": experiment_name 
-           }
+           "exp_name": experiment_name}
 
 
 df_pneumo_2d = pd.read_csv(run_folders["tsv_path"], sep=";")
@@ -36,12 +35,13 @@ data_flow_test = DataGenerator(df_pneumo_2d[data_filter],
                                path_to_img=run_folders["data_path"],
                                batch_size=batch_size,
                                shuffle=False)
-experimet_path = run_folders["model_path"] + experiment_name + "/"
+experiment_path = run_folders["model_path"] + experiment_name + "/images/"
 
-my_CAE = ConvAutoencoder.load_model(run_folders)
+
+my_CAE = ConvAutoencoder.load_model(run_folders, VCAE=True)
+
 example_batch = data_flow_test.__getitem__(index=0)
 example_images = example_batch[0]
 
-
 y_pred = my_CAE.model.predict(example_images)
-save_reconstructed_images(example_images, y_pred, run_folders)
+save_reconstructed_images(example_images, y_pred, experiment_path)

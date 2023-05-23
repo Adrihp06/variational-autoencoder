@@ -60,12 +60,13 @@ def create_environment(run_folders):
     except:
         pass
 
-def save_reconstructed_images(y_true, y_pred, run_folders):
+def save_reconstructed_images(y_true, y_pred, experiment_path):
     for i in range(0, y_pred.shape[0]):
         original = (y_true[i] * 255).astype("uint8")
         recon = (y_pred[i] * 255).astype("uint8")
         output = np.hstack([original, recon])
-        cv2.imwrite(run_folders["results_path"] + run_folders["exp_name"] + "/image_" + str(i) + ".png", output)
+        cv2.imwrite(experiment_path + "/image_" + str(i) + ".png", output)
+    print("Reconstructed images saved in: ", experiment_path)
 
 
 def create_json(hyperparameters, run_folders):

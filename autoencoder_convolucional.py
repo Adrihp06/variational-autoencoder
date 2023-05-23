@@ -5,41 +5,13 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler, CSVLogger, EarlyStopping
 from tensorflow.keras.utils import plot_model
+from tensorflow.keras.losses import Loss, mse
 from tensorflow.keras import regularizers
 from utils import learning_curve_plot
 from tensorflow.keras import backend as K
 import numpy as np
 import os
 import pickle
-
-#Definimos una clase que cree una capa de atencion Luong
-class AttentionLayer(Layer):
-    def __init__(self, **kwargs):
-        super(AttentionLayer, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        assert isinstance(input_shape, list)
-        #Se espera que la entrada sea una lista de dos tensores
-        self.W = self.add_weight(name='W', shape=(input_shape[0][-1], input_shape[0][-1]), initializer='normal', trainable=True)
-        self.V = self.add_weight(name='V', shape=(input_shape[0][-1], 1), initializer='normal', trainable=True)
-        super(AttentionLayer, self).build(input_shape)
-
-    def call(self, x):
-        #x[0] es el tensor de entrada, x[1] es el tensor de estado oculto
-        #Se calcula el puntaje de atencion
-        score = K.tanh(K.dot(x[0], self.W) + K.dot(x[1], self.W))
-        #Se calcula la distribucion de atencion
-        attention_weights = K.softmax(K.dot(score, self.V), axis=1)
-        #Se calcula el contexto
-        context = K.sum(x[0] * attention_weights, axis=1)
-        return context, attention_weights
-
-    def compute_output_shape(self, input_shape):
-        return input_shape[0][0], input_shape[0][-1]
-
-    def get_config(self):
-        base_config = super(AttentionLayer, self).get_config()
-        return base_config
 
 class ConvAutoencoder:
 
@@ -96,10 +68,9 @@ class ConvAutoencoder:
             def sampling(args):
                 mu, log_var = args
                 #Definimos la ecuación de la gaussiana
-                epsilon = K.random_normal(shape = K.shape(mu), mean = 0., stddev=1.)
+                epsilon = K.random_normal(shape = K.shape(mu), mean = 0., stddev=0.1)
                 return mu + K.exp(log_var/2)*epsilon
             encoder_output = Lambda(sampling, name='encoder_output')([self.mu, self.log_var]) 
-        #atencion = AttentionLayer(name='attention_layer')([encoder_input, encoder_output])
         #self.encoder = Model(encoder_input, atencion)
         self.encoder = Model(encoder_input, encoder_output)
         #Definimos el decoder
@@ -122,6 +93,7 @@ class ConvAutoencoder:
                 #Si estamos en la ultima capa devolvemos a valores entre 0 y 1
                 x = Activation('sigmoid')(x)
 
+
         decoder_output = x
         self.decoder = Model(decoder_input, decoder_output)
 
@@ -140,18 +112,12 @@ class ConvAutoencoder:
         #Definimos las pérdidas en caso del variacional y para ello tenemos que determinar una pérdida asociada al mse y otra al espacio latente
         #Debido a esto ponderamos la pérdida asociado al espacio latente como un hiperparámetro mas
         if VCAE:
+            reconstruction_loss = K.mean(K.square(self.model.input - self.model.output), axis=[1, 2, 3])
+            kl_loss = -0.5 * K.sum(1 + K.log(K.square(self.log_var)) - K.square(self.mu) - K.square(self.log_var), axis=-1)
+            vae_loss = K.mean(reconstruction_loss + kl_loss*self.r_loss_factor)
             
-            def vae_r_loss(y_true, y_pred):
-                r_loss = K.mean(K.square(y_true-y_pred), axis=[1,2,3])
-                return r_loss * self.r_loss_factor
-            def vae_kl_loss(y_true, y_pred):
-                kl_loss = -0.5 * K.sum(1 + self.log_var - K.square(self.mu) - K.exp(self.log_var), axis = 1)
-                return kl_loss
-            def vae_loss(y_true, y_pred):
-                r_loss = vae_r_loss(y_true, y_pred)
-                kl_loss = vae_kl_loss(y_true, y_pred)
-                return K.mean(r_loss + kl_loss)
-            self.model.compile(optimizer=optimizer, loss=vae_loss)
+            self.model.add_loss(vae_loss)
+            self.model.compile(optimizer=optimizer)
         else:
             self.model.compile(optimizer=optimizer, loss='mse')
         return self.model
@@ -193,12 +159,12 @@ class ConvAutoencoder:
         learning_curve_plot(history, run_folders)
 
     @staticmethod
-    def load_model(run_folders):
+    def load_model(run_folders, VCAE=False):
         with open(os.path.join(run_folders["model_path"], run_folders["exp_name"]+'/CAE_model.pkl'), 'rb') as f:
             params = pickle.load(f)
 
         my_CAE = ConvAutoencoder(*params)
-        my_CAE.build(use_batch_norm=True, use_dropout=True, VCAE=False)
+        my_CAE.build(use_batch_norm=True, use_dropout=True, VCAE=VCAE)
         my_CAE.model.load_weights(os.path.join(run_folders["model_path"], run_folders["exp_name"]+'/weights/CAE_weights.h5'))
         return my_CAE
     #Almacener una imagen con la arquitectura de la red

@@ -12,7 +12,7 @@ from keras_tuner.engine.hyperparameters import HyperParameters
 
 
 #paths
-base_folder = "/app/Otros/AC/"
+base_folder = "PATH_TO_PROJECT"
 #I/O paths
 run_folders = {"tsv_path": base_folder + "data/partition.csv", 
            "data_path": base_folder + "data/images/", 
