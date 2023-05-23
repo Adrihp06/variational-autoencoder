@@ -31,6 +31,7 @@ The chest X-ray dataset used for training the VAE consists of a collection of gr
 
 ## Results
 Some of the results
+
   ![Image 4](images/image_4.png)
   ![Image 2](images/image_2.png)
 
