@@ -27,9 +27,10 @@ The total loss used for training the VAE is a combination of the KL loss and the
 
 ## Dataset
 
-The chest X-ray dataset used for training the VAE consists of a collection of grayscale images of chest X-rays. The dataset should be preprocessed and normalized before training the VAE.
+The chest X-ray dataset used for training the VAE consists of a collection of grayscale images of chest X-rays.
 
 ## Results
-
-Include any relevant results and insights obtained from training and evaluating the VAE on the chest X-ray dataset. Provide visual examples of reconstructed images and any other relevant analysis.
+Some of the results
+  ![Image 4](images/image_4.png)
+  ![Image 2](images/image_2.png)
 
