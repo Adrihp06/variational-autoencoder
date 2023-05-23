@@ -34,4 +34,5 @@ Some of the results
 
   ![Image 4](images/image_4.png)
   ![Image 2](images/image_2.png)
+  ![Image 6](images/image_6.png)
 
